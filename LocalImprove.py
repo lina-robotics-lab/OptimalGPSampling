@@ -1,11 +1,16 @@
 import numpy as np
 from utils import RandomUnifBall
 
+import warnings
+
 def x_single_improve(x,loc,x_objective,step_size,ref,R,x_root=None):
     '''
         Alter a single element of x, x[loc], for potential improvement in x_objective.
     
         x_root is required if loc==0.
+
+        ref.shape = (N,space_dim)
+        R.shape = (T,N)
         
         x_objective(x):
             x.shape = (n_x,T,space_dim)
@@ -42,6 +47,7 @@ def x_single_improve(x,loc,x_objective,step_size,ref,R,x_root=None):
 
         x_best = x_cand[best_cand]
     else:
+        warnings.warn('No feasible solution is found. Make sure x0 is feasible.')
         x_best = x
         
     return x_best
@@ -50,6 +56,9 @@ def x_local_improve(x0,x_objective,step_size,ref,R,x_root,reverse_order = False)
     '''
         Call x_single_improve sequentially to obtain a local improvement of x0.
         
+
+        ref.shape = (N,space_dim)
+        R.shape = (T,N)
         
         x_objective(x):
             x.shape = (n_x,T,space_dim)
@@ -69,4 +78,92 @@ def x_local_improve(x0,x_objective,step_size,ref,R,x_root,reverse_order = False)
     
     return x
     
+
+
+def u_single_improve(x,loc,x_objective,step_size,ref,R):
+    '''
+    Alter a single u[loc]=x[loc+1]-x[loc], for potential improvement in x_objective.
+
+    ref.shape = (N,space_dim)
+    R.shape = (T,N)
+
+    x_objective(x):{
+        x.shape = (n_x,T,space_dim)
+        Output shape = (n_x,), output[i] = mutual information for x[i].}
+
+    '''
+    def trajectory(x1,u):
+        '''
+        x1.shape = (n,dim) or (dim)
+        u.shape = (n,T-1,dim)
+        
+        Generate x[n,1:T,dim] given x1 and u[n,1:T-1,dim]
+        
+        '''    
+        u_pad = np.pad(u,((0,0),(1,0),(0,0)),'constant',constant_values = 0)
+        u_pad[:,0,:] = x1
+        return np.cumsum(u_pad,axis=1)
+
+    def traj_to_u(x):
+        '''
+            u_t = x_t - x_{t-1}
+            
+            x.shape = (n_x,T,x_dim)
+            
+            output: u. u.shape = (n_x,T-1,x_dim)
+        '''
+        
+        return  x[:,1:,:]-x[:,:-1,:]
     
+    n_cand = 50000
+    
+    u0 = traj_to_u(np.array([x]))[0]
+
+    u_loc = RandomUnifBall(step_size,n_cand)
+
+    u_cand = np.array([u0 for _ in range(len(u_loc))]) 
+
+    u_cand[:,loc,:] = u_loc
+
+    x_cand = trajectory(x[0],u_cand)
+
+    # x itself should be one of the candidates, to ensure a guaranteed improvement.
+
+    x_cand = np.concatenate([x_cand,x[np.newaxis,:,:]])
+
+
+    # Discard the x_cand's that violate search region constraints.
+    x_cand = x_cand[(np.linalg.norm(x_cand-ref,axis=-1)<=R.T).all(axis=1)]
+
+    if len(x_cand)>0:
+
+        best_cand = np.argmax(x_objective(x_cand))
+
+        return x_cand[best_cand]
+    else:  
+        warnings.warn('No feasible solution is found. Make sure x0 is feasible.')
+        return x
+    
+def u_local_improve(x0,x_objective,step_size,ref,R,x_root=None):
+    '''
+        Call u_single_improve sequentially to obtain a local improvement of x0.
+        
+
+        ref.shape = (N,space_dim)
+        R.shape = (T,N)
+        
+        x_objective(x):
+            x.shape = (n_x,T,space_dim)
+            Output shape = (n_x,), output[i] = mutual information for x[i].
+
+    '''
+
+    x = np.array(x0)
+    # Improve the root of the trajectory(if applicable.)
+    if not x_root is None:
+        x = x_single_improve(x,0,x_objective,step_size,ref,R,x_root=x_root)
+
+    for loc in range(len(x)-1):
+        x = u_single_improve(x,loc,x_objective,step_size,ref,R)
+    
+    return x
