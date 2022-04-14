@@ -49,11 +49,17 @@ def GPMI(x,c,l,var_0):
     The mutual information for a GP.
     Fully vectorized.
     
-    x.shape = (n_x,T,space_dim)
+    x.shape = (n_x,T,space_dim) or (T,space_dim)
     
     Output shape = (n_x,), output[i] = mutual information for x[i].
     '''
-    KA = k(x[:,:,np.newaxis,:],x[:,np.newaxis,:,:],c,l)
+    
+
+    if len(x.shape)<=2:
+        x = x.reshape(-1,2)
+        KA = k(x[:,np.newaxis,:],x,c,l)
+    elif len(x.shape)==3:
+        KA = k(x[:,:,np.newaxis,:],x[:,np.newaxis,:,:],c,l)
 
     if var_0>0:
         return 1/2*np.log(np.linalg.det(np.eye(KA.shape[1])+KA/var_0))

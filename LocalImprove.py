@@ -7,7 +7,7 @@ def x_single_improve(x,loc,x_objective,step_size,ref,R,x_root=None):
     '''
         Alter a single element of x, x[loc], for potential improvement in x_objective.
     
-        x_root is required if loc==0.
+        x_root, the center of sampling ball for x[0], is required if loc==0.
 
         ref.shape = (N,space_dim)
         R.shape = (T,N)
@@ -23,6 +23,7 @@ def x_single_improve(x,loc,x_objective,step_size,ref,R,x_root=None):
     if loc==0:
         assert(not x_root is None)
         x_loc = RandomUnifBall(step_size,n_test,center = x_root) 
+        x_loc = np.vstack([x_root,x_loc])
     else:
         x_loc = RandomUnifBall(step_size,n_test,center = x[loc-1]) 
     # The x[loc] within x_1:T to be altered. 
@@ -47,18 +48,24 @@ def x_single_improve(x,loc,x_objective,step_size,ref,R,x_root=None):
 
         x_best = x_cand[best_cand]
     else:
-        warnings.warn('No feasible solution is found. Make sure x0 is feasible.')
+        warnings.warn('No feasible solution is found for loc={}.'.format(loc))
         x_best = x
         
     return x_best
 
-def x_local_improve(x0,x_objective,step_size,ref,R,x_root,reverse_order = False):
+def x_local_improve(x0,x_objective,step_size,ref,R,x_root=None,n_pass=1,reverse_order = False):
     '''
-        Call x_single_improve sequentially to obtain a local improvement of x0.
+        Call x_single_improve sequentially to obtain local improvements of x0.
         
+        x_root, the center of sampling ball for x[0]. If x_root is None, x[0] will be fixed.
 
         ref.shape = (N,space_dim)
         R.shape = (T,N)
+
+
+        n_pass: the number of full-length passes to be run. 
+                A full-length pass is equivalent as calling x_single_improve for len(x) times.
+
         
         x_objective(x):
             x.shape = (n_x,T,space_dim)
@@ -66,15 +73,19 @@ def x_local_improve(x0,x_objective,step_size,ref,R,x_root,reverse_order = False)
 
     '''
     x = np.array(x0)
-    
-    for i in range(len(x)):
-        if reverse_order:
-            idx = (len(x)-i-1) % len(x)
-        else:
-            idx = i % len(x)
-            
-        x_best = x_single_improve(x,idx,x_objective,step_size,ref,R,x_root = x_root if idx%len(x)==0 else None)
-        x = x_best
+
+    for _ in range(n_pass):
+        for i in range(len(x)):
+            if reverse_order:
+                idx = (len(x)-i-1) % len(x)
+            else:
+                idx = i % len(x)
+                
+            if x_root is None and idx==0:
+                continue
+            else:
+                x_best = x_single_improve(x,idx,x_objective,step_size,ref,R,x_root = x_root if idx%len(x)==0 else None)
+                x = x_best
     
     return x
     
@@ -141,10 +152,11 @@ def u_single_improve(x,loc,x_objective,step_size,ref,R):
 
         return x_cand[best_cand]
     else:  
-        warnings.warn('No feasible solution is found. Make sure x0 is feasible.')
+        # print('No feasible')
+        warnings.warn('No feasible solution is found at loc {}.'.format(loc))
         return x
     
-def u_local_improve(x0,x_objective,step_size,ref,R,x_root=None):
+def u_local_improve(x0,x_objective,step_size,ref,R,n_pass=1,x_root=None):
     '''
         Call u_single_improve sequentially to obtain a local improvement of x0.
         
@@ -156,14 +168,18 @@ def u_local_improve(x0,x_objective,step_size,ref,R,x_root=None):
             x.shape = (n_x,T,space_dim)
             Output shape = (n_x,), output[i] = mutual information for x[i].
 
+        n_pass: the number of full-length passes to be run. 
+                    A full-length pass is equivalent as calling u_single_improve for len(x)-1 times.
     '''
 
     x = np.array(x0)
-    # Improve the root of the trajectory(if applicable.)
-    if not x_root is None:
-        x = x_single_improve(x,0,x_objective,step_size,ref,R,x_root=x_root)
 
-    for loc in range(len(x)-1):
-        x = u_single_improve(x,loc,x_objective,step_size,ref,R)
+    for _ in range(n_pass):
+        # Improve the root of the trajectory(if applicable.)
+        if not x_root is None:
+            x = x_single_improve(x,0,x_objective,step_size,ref,R,x_root=x_root)
+
+        for loc in range(len(x)-1):
+            x = u_single_improve(x,loc,x_objective,step_size,ref,R)
     
     return x
