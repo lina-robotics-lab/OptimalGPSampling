@@ -122,6 +122,54 @@ def incremental_greedy(kernel,x0,step_size,ref,R,T,var_0,c):
         xs.append(x_best)
     return np.array(xs)
 
+def no_step_greedy_ball(kernel,x0,r,T,var_0,c):
+    '''
+        Compute the incremental greedy solution within the ball B(x0,r), without step size constraints.
+
+    '''
+    def marginal_gain(x_new,x_old,kernel):
+        '''
+            Calculate the marginal gain in mutual information, given x_old has been collected, and a list of candidate x_new's is to be collected.
+
+            x_old.shape = (t,space_dim)
+
+            x_new.shape = (n,space_dim)
+
+            Output: shape = (n), output[i] = marginal gain for x_new[i].
+        '''
+
+        S = Gram(kernel,x_old)
+
+        k_t = kernel(x_new[:,np.newaxis,:],x_old).T
+
+
+
+        return 1/2*np.log(1 + c/var_0 \
+                       - 1/var_0**2 *np.sum(k_t.T.dot(np.linalg.inv(\
+                                    np.eye(len(S))+1/var_0 * S))* k_t.T,axis=-1))
+    xs = [x0]
+
+    n_test = 1 * 10 ** 5
+
+    for loc in range(T-1):
+        # Generate the feasible random samples
+        rand_theta = np.random.rand(n_test)*2*np.pi
+
+        rand_dir = np.array([np.cos(rand_theta),np.sin(rand_theta)])
+
+        x_test = x0+(r*np.random.rand(n_test)*rand_dir).T # Step size constraint.
+
+        if len(x_test)>0:# If some x_test are feasible.
+            gain = marginal_gain(x_test,np.array(xs),kernel)
+
+            x_best = x_test[np.argmax(gain)]
+        else: # If none of the x_tests are feasible(the region is infeasible)
+            x_best = xs[-1]
+
+        xs.append(x_best)
+
+    return np.array(xs)
+
 def projected_x_gradient(objective,initial_states,ref,R,T,step_size):
     n_iter = 100
     delta_tolerance = 1e-7 # If ||z_{t+1}-z_t||<delta_tolerance, terminate the algorithm.
